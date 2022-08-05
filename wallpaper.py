@@ -16,18 +16,14 @@ class wallpaper_scraper:
 
 	def __init__(self):
 	
-		self.executor = concurrent.futures.ThreadPoolExecutor(100)
 		self.search_query = input('Enter Search Query: ')
 		self.number_of_pages = input('Enter Number of pages: ')
 		self.path = str(Path(__file__).parent) + '/downloaded/'
 		self.mutex = Lock()
-		self.image_file_number = 0
 		self.image_links =[]
 		self.image_download_page = []
 		self.images = []
 		self.page_number = 0
-		self.item = 0
-		self.item_two = 0
 		
 	def scraper(self):
 	
@@ -42,55 +38,49 @@ class wallpaper_scraper:
 			for i in fetch:
 				self.image_links.append(i['href'])
 			self.page_number += 1
-			sys.stdout.write('Scraping Page {}, Found {} Links'.format(self.page_number, len(self.image_links)))
-			sys.stdout.flush()
-			if self.page_number != int(self.number_of_pages):
-				sys.stdout.write('\033[2K\033[1G')
+			print('\rScraping Page {}, Found {} Links'.format(self.page_number, len(self.image_links)),end='')
 			
-
-	def URL_scraper(self, image_links, i):
-		request = requests.get(image_links[i])
+	def URL_scraper(self, pages, index):
+		
+		request = requests.get(pages[index])
 		parse = soup(request.content,'html.parser')
 		fetch = parse.find('a',{'class':'link_btn aq mt20'})
+		print('\rScraping {} of {} URLs'.format(str(index+1), len(self.image_links)), end='')
 		self.image_download_page.append(fetch['href'])
 		
-	def Image_Link_Scraper(self, image_download_page, i):
 		
-		request = requests.get(image_download_page[i])
+	def Image_Link_Scraper(self, pages, index):
+			
+		request = requests.get(pages[index])
 		parse = soup(request.content,'html.parser')
-		fetch = parse.find('img',attrs={'itemprop':'contentUrl'})
+		fetch = parse.find('img',attrs={'itemprop':'contentUrl'})			
+		print('\rScraping {} of {} Image Links'.format(str(self.item), len(self.image_download_page)), end='')
 		self.images.append(fetch['src'])
+				
 
-	def download_image(self, path, number, url, index):		
+	def download_image(self, path, number, url, index):	
+
 		downloaded_image = requests.get(url[index]).content
 		with open(path + 'image' + str(number) + '.jpg','wb') as image:			
 			print('Downloading: ' + url[index])
 			image.write(downloaded_image)
 		image.close()
+
 	
-	def progress_indicator(self, future):
-		self.item +=1
-		print('\rScraping {} of {}'.format(str(self.item), len(self.image_links)), end='')
-		
-	def scraper_indicator(self, future):
-		self.item_two +=1
-		print('\rAcquiring Image {} of {}'.format(str(self.item), len(self.image_links)), end='')
-		
-	def threaded_download(self):
+	def threaded_URL_scraper(self):
 		self.scraper()
-		futures_list = []
-		image_link_thread = []
+		with concurrent.futures.ThreadPoolExecutor() as executor:
 		
-		futures_list = [self.executor.submit(self.URL_scraper, self.image_links, image_link) for image_link in range(len(self.image_links))]
-		
-		image_link_thread = [self.executor.submit(self.Image_Link_Scraper, self.image_download_page, page_index) for page_index in range(len(self.image_download_page))]
-		
-		for future in futures_list:			
-			result = future.result()
-			
-		for future in image_link_thread:
-			future.add_done_callback(self.scraper_indicator)
+			for index in range(len(self.image_links)):
+				executor.submit(self.URL_scraper, self.image_links, index)
+
+			for index in range(len(self.image_download_page)):
+				executor.submit(self.Image_Link_Scraper, self.image_download_page, index)
+			print('test')
+
+			for index in range(len(self.image_download_page)):
+				executor.submit(self.download_image, self.path, index, self.image_download_page, index)
 		
 start = wallpaper_scraper()
-start.threaded_download()
+start.threaded_URL_scraper()
 #start.print_list()
